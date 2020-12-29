@@ -311,7 +311,9 @@ class HiveDialect(default.DefaultDialect):
         rows = [row for row in rows if row[0] and row[0] != '# col_name']
         result = []
         for (col_name, col_type, _comment) in rows:
-            if col_name == '# Partition Information':
+            # Spark partition columns is separated with "# Partitioning" from main columns, which is
+            # "# Partition Information" in Hive case
+            if col_name in ('# Partition Information', '# Partitioning'):
                 break
             # Take out the more detailed type information
             # e.g. 'map<int,int>' -> 'map'
