@@ -8,6 +8,7 @@ Many docstrings in this file are based on the PEP, which is in the public domain
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
+import base64
 import datetime
 import re
 from decimal import Decimal
@@ -28,6 +29,7 @@ import sys
 import thrift.protocol.TBinaryProtocol
 import thrift.transport.TSocket
 import thrift.transport.TTransport
+from thrift.transport.THttpClient import THttpClient
 
 # PEP 249 module globals
 apilevel = '2.0'
@@ -74,11 +76,11 @@ class HiveParamEscaper(common.ParamEscaper):
             item = item.decode('utf-8')
         return "'{}'".format(
             item
-            .replace('\\', '\\\\')
-            .replace("'", "\\'")
-            .replace('\r', '\\r')
-            .replace('\n', '\\n')
-            .replace('\t', '\\t')
+                .replace('\\', '\\\\')
+                .replace("'", "\\'")
+                .replace('\r', '\\r')
+                .replace('\n', '\\n')
+                .replace('\t', '\\t')
         )
 
 
@@ -99,7 +101,7 @@ class Connection(object):
 
     def __init__(self, host=None, port=None, username=None, database='default', auth=None,
                  configuration=None, kerberos_service_name=None, password=None,
-                 thrift_transport=None):
+                 thrift_transport=None, transport_mode='binary', http_path='/cliservice'):
         """Connect to HiveServer2
 
         :param host: What host HiveServer2 runs on
@@ -126,11 +128,11 @@ class Connection(object):
             raise ValueError("kerberos_service_name should be set if and only if in KERBEROS mode")
         if thrift_transport is not None:
             has_incompatible_arg = (
-                host is not None
-                or port is not None
-                or auth is not None
-                or kerberos_service_name is not None
-                or password is not None
+                    host is not None
+                    or port is not None
+                    or auth is not None
+                    or kerberos_service_name is not None
+                    or password is not None
             )
             if has_incompatible_arg:
                 raise ValueError("thrift_transport cannot be used with "
@@ -138,6 +140,13 @@ class Connection(object):
 
         if thrift_transport is not None:
             self._transport = thrift_transport
+        elif transport_mode in ('http', 'https'):
+            self._transport = self.__get_http_connection(transport_mode=transport_mode,
+                                                         host=host,
+                                                         port=port,
+                                                         http_path=http_path,
+                                                         username=username,
+                                                         password=password)
         else:
             if port is None:
                 port = 10000
@@ -173,6 +182,7 @@ class Connection(object):
                         raise AssertionError
                     sasl_client.init()
                     return sasl_client
+
                 self._transport = thrift_sasl.TSaslClientTransport(sasl_factory, sasl_auth, socket)
             else:
                 # All HS2 config options:
@@ -240,6 +250,20 @@ class Connection(object):
 
     def rollback(self):
         raise NotSupportedError("Hive does not have transactions")  # pragma: no cover
+
+    @staticmethod
+    def __get_http_connection(transport_mode, host, port, http_path, username, password):
+        assert transport_mode in ('http', 'https')
+
+        transport = THttpClient("{transport_mode}://{host}:{port}/{httpPath}".format(transport_mode=transport_mode,
+                                                                                     host=host,
+                                                                                     port=port,
+                                                                                     httpPath=http_path.strip("/")))
+        credentials = "%s:%s" % (username, password)
+        transport.setCustomHeaders(
+            {"Authorization": "Basic " + base64.b64encode(credentials.encode()).decode().strip()})
+
+        return transport
 
 
 class Cursor(common.DBAPICursor):
@@ -374,8 +398,8 @@ class Cursor(common.DBAPICursor):
 
     def _fetch_more(self):
         """Send another TFetchResultsReq and update state"""
-        assert(self._state == self._STATE_RUNNING), "Should be running when in _fetch_more"
-        assert(self._operationHandle is not None), "Should have an op handle in _fetch_more"
+        assert (self._state == self._STATE_RUNNING), "Should be running when in _fetch_more"
+        assert (self._operationHandle is not None), "Should have an op handle in _fetch_more"
         if not self._operationHandle.hasResultSet:
             raise ProgrammingError("No result set")
         req = ttypes.TFetchResultsReq(
