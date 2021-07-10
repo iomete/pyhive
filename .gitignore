@@ -14,3 +14,5 @@ cover/
 .cache/
 *.iml
 /scripts/.thrift_gen
+/build/
+/IometePyHive.egg-info/

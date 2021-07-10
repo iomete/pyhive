@@ -27,9 +27,9 @@ setup(
     version=pyhive.__version__,
     description="Python interface to Hive",
     long_description=long_description,
-    url='https://github.com/dropbox/PyHive',
-    author="Jing Wang",
-    author_email="jing@dropbox.com",
+    url='https://github.com/iomete/pyhive',
+    author="Vusal D.",
+    author_email="vusal@iomete.com",
     license="Apache License, Version 2.0",
     packages=['pyhive', 'TCLIService'],
     classifiers=[
